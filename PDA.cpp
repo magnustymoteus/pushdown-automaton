@@ -4,8 +4,9 @@
 
 #include "PDA.h"
 #include <fstream>
-#include <iostream>
 #include "json.hpp"
+
+#include "utils.h"
 
 using nlohmann::json;
 
@@ -32,14 +33,6 @@ PDA::PDA(const std::string &jsonPath) {
     validate();
 }
 
-bool stringIsInSet(const std::string &str, const std::set<std::string> &set) {
-    return set.find(str) != set.end();
-}
-void cerrAndSetValidity(const bool &condition, bool &validRef, const std::string &message) {
-    if(condition) std::cerr << message << std::endl;
-    if(validRef && condition) validRef = false;
-}
-
 bool PDA::validate() const {
     bool isValid = true;
     cerrAndSetValidity(!stringIsInSet(startState, states), isValid,
@@ -50,7 +43,8 @@ bool PDA::validate() const {
     for(const auto &currentTransition : transitions) {
         cerrAndSetValidity(!stringIsInSet(currentTransition.first.from, states), isValid,
                               "There exists a 'from' state in transition that is not in states set!");
-        cerrAndSetValidity(!stringIsInSet(currentTransition.first.input, alphabet),isValid,
+        cerrAndSetValidity(!stringIsInSet(currentTransition.first.input, alphabet) &&
+        !currentTransition.first.input.empty(),isValid,
                               "There exists an input in transition that is not in alphabet!");
         cerrAndSetValidity(!stringIsInSet(currentTransition.first.stackTop, stackAlphabet), isValid,
                               "A stack symbol in transition is not in stack alphabet!");
@@ -63,4 +57,48 @@ bool PDA::validate() const {
     }
 
     return isValid;
+}
+
+
+CFG PDA::toCFG() const {
+    // to do: permutate symbols only once by finding the transition with longest stack replacement (optimization)
+    std::set<std::string> variables = getAllVariables(states, stackAlphabet);
+
+    std::map<std::string, std::vector<std::vector<std::string>>> productionRules;
+    const std::string startSymbol = "S";
+    const std::set<std::string> terminals = alphabet;
+    // production rules for S
+    for(const std::string &currentState : states) {
+        const std::string &variable = makeVariable(startState, startStack, currentState);
+        productionRules["S"].push_back({variable});
+    }
+
+    for(const auto& currentTransition : transitions) {
+        const std::vector<std::string> &stackReplacement = currentTransition.second.stackReplacement;
+        if(stackReplacement.empty()) {
+            const std::string variableName = makeVariable(
+                    currentTransition.first.from, currentTransition.first.stackTop, currentTransition.second.to);
+            std::vector<std::string> body = {currentTransition.first.input};
+            productionRules[variableName].push_back(body);
+        }
+        else {
+            std::vector<std::vector<std::string>> permutations;
+            permutateSymbols(static_cast<int>(stackReplacement.size()),
+                             states, permutations);
+
+            for(std::vector<std::string> &currentPermutation : permutations) {
+                std::vector<std::string> result = {currentTransition.first.input};
+                for (int i = 0; i < stackReplacement.size(); i++) {
+                    const std::string &prevState = (!i) ? currentTransition.first.from : currentPermutation[i-1];
+                    const std::string &variable =
+                            makeVariable(prevState, stackReplacement[i], currentPermutation[i]);
+                    result.push_back(variable);
+                }
+                const std::string &head = makeVariable(
+                        currentTransition.first.from, currentTransition.first.stackTop, currentPermutation.back());
+                productionRules[head].push_back(result);
+            }
+        }
+    }
+    return CFG {variables, terminals, productionRules, startSymbol};
 }

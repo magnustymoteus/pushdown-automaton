@@ -9,7 +9,10 @@
 #include <string>
 #include <stack>
 #include <map>
-#include <list>
+#include <vector>
+
+#include "CFG.h"
+
 
 struct PDATransitionDomain {
     std::string from;
@@ -25,14 +28,16 @@ struct PDATransitionDomain {
 
 struct PDATransitionImage {
     std::string to;
-    std::list<std::string> stackReplacement;
-    PDATransitionImage(std::string to, std::list<std::string> stackReplacement) :
+    std::vector<std::string> stackReplacement;
+    PDATransitionImage(std::string to, std::vector<std::string> stackReplacement) :
     to(std::move(to)), stackReplacement(std::move(stackReplacement)) {}
 };
 
 class PDA {
 private:
     std::stack<std::string> stack;
+    [[nodiscard]] std::vector<std::vector<std::string>> giveAllCombinations(
+            const std::pair<PDATransitionDomain, PDATransitionImage> &transition) const;
 public:
     std::set<std::string> states;
     std::set<std::string> alphabet;
@@ -46,6 +51,7 @@ public:
     explicit PDA(const std::string &jsonPath);
 
     bool validate() const;
+    [[nodiscard]] CFG toCFG() const;
 };
 
 
